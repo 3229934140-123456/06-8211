@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from sqlalchemy.exc import IntegrityError
+
 from bookkeeper.database import db
 from bookkeeper.models import Budget, MonthlySummary
 
@@ -9,6 +11,14 @@ class BudgetService:
     @staticmethod
     def create_budget(category_id, amount, year, month):
         amount = Decimal(str(amount))
+        existing = Budget.query.filter_by(
+            category_id=category_id, year=year, month=month
+        ).first()
+        if existing:
+            raise ValueError(
+                f"Budget already exists for category_id={category_id}, "
+                f"year={year}, month={month}"
+            )
         budget = Budget(
             category_id=category_id,
             amount=amount,
@@ -18,6 +28,12 @@ class BudgetService:
         try:
             db.session.add(budget)
             db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            raise ValueError(
+                f"Budget already exists for category_id={category_id}, "
+                f"year={year}, month={month}"
+            )
         except Exception:
             db.session.rollback()
             raise

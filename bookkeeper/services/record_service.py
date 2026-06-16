@@ -201,17 +201,21 @@ class RecordService:
         if not sibling:
             return
 
-        sibling_account = Account.query.get(sibling.account_id)
+        from_rec = record if record.id < sibling.id else sibling
+        to_rec = sibling if record.id < sibling.id else record
 
-        if account.is_liability:
-            AccountService.adjust_balance(account, -record.amount, session=db.session)
-        else:
-            AccountService.adjust_balance(account, record.amount, session=db.session)
+        from_account = Account.query.get(from_rec.account_id)
+        to_account = Account.query.get(to_rec.account_id)
 
-        if sibling_account.is_liability:
-            AccountService.adjust_balance(sibling_account, record.amount, session=db.session)
+        if from_account.is_liability:
+            AccountService.adjust_balance(from_account, -record.amount, session=db.session)
         else:
-            AccountService.adjust_balance(sibling_account, -record.amount, session=db.session)
+            AccountService.adjust_balance(from_account, record.amount, session=db.session)
+
+        if to_account.is_liability:
+            AccountService.adjust_balance(to_account, record.amount, session=db.session)
+        else:
+            AccountService.adjust_balance(to_account, -record.amount, session=db.session)
 
         db.session.delete(sibling)
 

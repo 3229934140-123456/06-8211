@@ -140,7 +140,7 @@ class Budget(db.Model):
     __tablename__ = "budgets"
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    category_id = db.Column(db.Integer, db.ForeignKey("categories.id"), nullable=False, unique=True)
+    category_id = db.Column(db.Integer, db.ForeignKey("categories.id"), nullable=False)
     amount = db.Column(db.Numeric(precision=15, scale=2), nullable=False)
     year = db.Column(db.Integer, nullable=False)
     month = db.Column(db.Integer, nullable=False)
