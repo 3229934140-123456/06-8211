@@ -3,7 +3,7 @@ from decimal import Decimal
 from sqlalchemy import func
 
 from bookkeeper.database import db
-from bookkeeper.models import Account, Record, RecordType, MonthlySummary
+from bookkeeper.models import Account, Category, Record, RecordType, MonthlySummary
 
 
 class StatsService:
@@ -30,6 +30,105 @@ class StatsService:
             "total_expense": str(total_expense),
             "net": str(total_income - total_expense),
             "categories": categories,
+        }
+
+    @staticmethod
+    def annual_view(year, account_id=None, category_id=None):
+        query = MonthlySummary.query.filter_by(year=year)
+        if category_id:
+            query = query.filter_by(category_id=category_id)
+        summaries = query.order_by(MonthlySummary.month, MonthlySummary.category_id).all()
+
+        monthly_data = {}
+        filtered_categories = set()
+        for s in summaries:
+            if account_id:
+                rec_exists = Record.query.filter(
+                    Record.record_date.between(
+                        f"{s.year}-{s.month:02d}-01",
+                        f"{s.year}-{s.month:02d}-31"
+                    ),
+                    Record.account_id == account_id,
+                    Record.category_id == s.category_id,
+                ).first()
+                if not rec_exists:
+                    continue
+
+            filtered_categories.add(s.category_id)
+            key = s.month
+            if key not in monthly_data:
+                monthly_data[key] = {
+                    "year": s.year,
+                    "month": s.month,
+                    "total_income": Decimal("0"),
+                    "total_expense": Decimal("0"),
+                    "categories": {},
+                }
+            monthly_data[key]["total_income"] += s.total_income or Decimal("0")
+            monthly_data[key]["total_expense"] += s.total_expense or Decimal("0")
+            monthly_data[key]["categories"][s.category_id] = {
+                "category_id": s.category_id,
+                "category_name": s.category.name if s.category else None,
+                "total_income": str(s.total_income),
+                "total_expense": str(s.total_expense),
+            }
+
+        months = []
+        year_total_income = Decimal("0")
+        year_total_expense = Decimal("0")
+        for m in range(1, 13):
+            d = monthly_data.get(m)
+            if d:
+                inc = d["total_income"]
+                exp = d["total_expense"]
+                year_total_income += inc
+                year_total_expense += exp
+                months.append({
+                    "year": d["year"],
+                    "month": d["month"],
+                    "total_income": str(inc),
+                    "total_expense": str(exp),
+                    "net": str(inc - exp),
+                    "categories": list(d["categories"].values()),
+                })
+            else:
+                months.append({
+                    "year": year,
+                    "month": m,
+                    "total_income": "0",
+                    "total_expense": "0",
+                    "net": "0",
+                    "categories": [],
+                })
+
+        cat_details = []
+        for cat_id in sorted(filtered_categories):
+            cat = Category.query.get(cat_id)
+            cat_inc = Decimal("0")
+            cat_exp = Decimal("0")
+            for m_data in monthly_data.values():
+                c_data = m_data["categories"].get(cat_id)
+                if c_data:
+                    cat_inc += Decimal(c_data["total_income"])
+                    cat_exp += Decimal(c_data["total_expense"])
+            cat_details.append({
+                "category_id": cat_id,
+                "category_name": cat.name if cat else None,
+                "year_total_income": str(cat_inc),
+                "year_total_expense": str(cat_exp),
+            })
+
+        return {
+            "year": year,
+            "filter": {
+                "account_id": account_id,
+                "category_id": category_id,
+            },
+            "year_total_income": str(year_total_income),
+            "year_total_expense": str(year_total_expense),
+            "year_net": str(year_total_income - year_total_expense),
+            "months": months,
+            "category_totals": cat_details,
         }
 
     @staticmethod

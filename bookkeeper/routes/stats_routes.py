@@ -14,6 +14,21 @@ def category_summary():
     return jsonify(result)
 
 
+@stats_bp.route("/annual", methods=["GET"])
+def annual_view():
+    year = request.args.get("year", type=int)
+    if not year:
+        return jsonify({"error": "year is required"}), 400
+    account_id = request.args.get("account_id", type=int)
+    category_id = request.args.get("category_id", type=int)
+    result = StatsService.annual_view(
+        year,
+        account_id=account_id if account_id else None,
+        category_id=category_id if category_id else None,
+    )
+    return jsonify(result)
+
+
 @stats_bp.route("/monthly-trend", methods=["GET"])
 def monthly_trend():
     start_year = request.args.get("start_year", type=int)

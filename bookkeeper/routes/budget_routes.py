@@ -6,10 +6,14 @@ budget_bp = Blueprint("budgets", __name__, url_prefix="/api/budgets")
 
 
 def _validate_amount(amount_raw):
+    if isinstance(amount_raw, float) and (amount_raw != amount_raw or amount_raw == float("inf") or amount_raw == float("-inf")):
+        return None, f"Invalid amount: {amount_raw!r}. Must be a positive finite number."
     try:
         val = Decimal(str(amount_raw))
     except (InvalidOperation, TypeError, ValueError):
-        return None, f"Invalid amount: {amount_raw!r}. Must be a positive number."
+        return None, f"Invalid amount: {amount_raw!r}. Must be a positive finite number."
+    if not val.is_finite():
+        return None, f"Invalid amount: {amount_raw!r}. Must be a positive finite number."
     if val <= 0:
         return None, f"Amount must be greater than 0, got {val}"
     return val, None
@@ -74,3 +78,21 @@ def budget_status():
         return jsonify({"error": "year and month are required"}), 400
     status = BudgetService.get_budget_status(year, month)
     return jsonify(status)
+
+
+@budget_bp.route("/copy", methods=["POST"])
+def copy_budget():
+    data = request.get_json()
+    src_year = data.get("src_year")
+    src_month = data.get("src_month")
+    dst_year = data.get("dst_year")
+    dst_month = data.get("dst_month")
+    if not all([src_year, src_month, dst_year, dst_month]):
+        return jsonify({"error": "src_year, src_month, dst_year, dst_month are required"}), 400
+    try:
+        result = BudgetService.copy_from_month(src_year, src_month, dst_year, dst_month)
+        return jsonify(result), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400

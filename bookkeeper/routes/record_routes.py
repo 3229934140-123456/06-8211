@@ -1,6 +1,9 @@
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from flask import Blueprint, request, jsonify
+from io import StringIO
+import csv
+
+from flask import Blueprint, request, jsonify, Response
 from bookkeeper.database import db
 from bookkeeper.models import Category, RecordType, Tag
 from bookkeeper.services.record_service import RecordService
@@ -9,10 +12,14 @@ record_bp = Blueprint("records", __name__, url_prefix="/api/records")
 
 
 def _validate_amount(amount_raw):
+    if isinstance(amount_raw, float) and (amount_raw != amount_raw or amount_raw == float("inf") or amount_raw == float("-inf")):
+        return None, f"Invalid amount: {amount_raw!r}. Must be a positive finite number."
     try:
         val = Decimal(str(amount_raw))
     except (InvalidOperation, TypeError, ValueError):
-        return None, f"Invalid amount: {amount_raw!r}. Must be a positive number."
+        return None, f"Invalid amount: {amount_raw!r}. Must be a positive finite number."
+    if not val.is_finite():
+        return None, f"Invalid amount: {amount_raw!r}. Must be a positive finite number."
     if val <= 0:
         return None, f"Amount must be greater than 0, got {val}"
     return val, None
@@ -184,3 +191,47 @@ def delete_record(record_id):
     if RecordService.delete_record(record_id):
         return jsonify({"message": "Record deleted"})
     return jsonify({"error": "Record not found"}), 404
+
+
+@record_bp.route("/export/csv", methods=["GET"])
+def export_csv():
+    try:
+        records = RecordService.query_records(
+            account_id=request.args.get("account_id", type=int),
+            record_type=request.args.get("record_type"),
+            category_id=request.args.get("category_id", type=int),
+            start_date=date.fromisoformat(request.args["start_date"]) if "start_date" in request.args else None,
+            end_date=date.fromisoformat(request.args["end_date"]) if "end_date" in request.args else None,
+            tag_id=request.args.get("tag_id", type=int),
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "id", "date", "direction", "type", "amount",
+        "account_id", "target_account_id", "category_id",
+        "note", "tags",
+    ])
+    for r in records:
+        tag_names = ",".join(t.name for t in r.tags)
+        writer.writerow([
+            r.id,
+            r.record_date.isoformat(),
+            r.direction,
+            r.record_type.value,
+            str(r.amount),
+            r.account_id,
+            r.target_account_id or "",
+            r.category_id or "",
+            r.note or "",
+            tag_names,
+        ])
+
+    filename = "records_export.csv"
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

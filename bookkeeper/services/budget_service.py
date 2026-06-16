@@ -40,6 +40,58 @@ class BudgetService:
         return budget
 
     @staticmethod
+    def copy_from_month(src_year, src_month, dst_year, dst_month):
+        src_budgets = Budget.query.filter_by(year=src_year, month=src_month).all()
+        if not src_budgets:
+            raise ValueError(f"No budgets found for {src_year}-{src_month:02d}")
+
+        existing_dst = Budget.query.filter_by(year=dst_year, month=dst_month).all()
+        existing_cats = {b.category_id for b in existing_dst}
+
+        copied = []
+        skipped = []
+
+        for src in src_budgets:
+            cat_id = src.category_id
+            cat_name = src.category.name if src.category else None
+            if cat_id in existing_cats:
+                skipped.append({
+                    "category_id": cat_id,
+                    "category_name": cat_name,
+                    "amount": str(src.amount),
+                    "reason": "Budget already exists for this category in target month",
+                })
+                continue
+
+            new_budget = Budget(
+                category_id=cat_id,
+                amount=src.amount,
+                year=dst_year,
+                month=dst_month,
+            )
+            db.session.add(new_budget)
+            copied.append({
+                "category_id": cat_id,
+                "category_name": cat_name,
+                "amount": str(src.amount),
+            })
+
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+
+        return {
+            "source": f"{src_year}-{src_month:02d}",
+            "target": f"{dst_year}-{dst_month:02d}",
+            "copied_count": len(copied),
+            "skipped_count": len(skipped),
+            "copied": copied,
+            "skipped": skipped,
+        }
+
+    @staticmethod
     def update_budget(budget_id, amount=None):
         budget = Budget.query.get(budget_id)
         if not budget:

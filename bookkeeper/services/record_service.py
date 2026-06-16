@@ -154,6 +154,24 @@ class RecordService:
         )
 
     @staticmethod
+    def query_records(account_id=None, record_type=None, category_id=None,
+                      start_date=None, end_date=None, tag_id=None):
+        query = Record.query
+        if account_id:
+            query = query.filter_by(account_id=account_id)
+        if record_type:
+            query = query.filter_by(record_type=RecordType(record_type))
+        if category_id:
+            query = query.filter_by(category_id=category_id)
+        if start_date:
+            query = query.filter(Record.record_date >= start_date)
+        if end_date:
+            query = query.filter(Record.record_date <= end_date)
+        if tag_id:
+            query = query.filter(Record.tags.any(Tag.id == tag_id))
+        return query.order_by(Record.record_date.desc(), Record.id.desc()).all()
+
+    @staticmethod
     def delete_record(record_id):
         record = Record.query.get(record_id)
         if not record:

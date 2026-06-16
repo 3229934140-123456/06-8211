@@ -123,6 +123,7 @@ class Record(db.Model):
         return {
             "id": self.id,
             "record_type": self.record_type.value,
+            "direction": self.direction,
             "amount": str(self.amount),
             "account_id": self.account_id,
             "target_account_id": self.target_account_id,
@@ -134,6 +135,23 @@ class Record(db.Model):
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
+
+    @property
+    def direction(self):
+        if self.record_type == RecordType.INCOME:
+            return "in"
+        elif self.record_type == RecordType.EXPENSE:
+            return "out"
+        else:
+            if self.target_account_id is not None and self.id is not None:
+                sibling = Record.query.filter(
+                    Record.transfer_group_id == self.transfer_group_id,
+                    Record.id != self.id,
+                ).first()
+                if sibling and self.id < sibling.id:
+                    return "out"
+                return "in"
+            return "in"
 
 
 class Budget(db.Model):
