@@ -195,20 +195,43 @@ def delete_record(record_id):
 
 @record_bp.route("/export/csv", methods=["GET"])
 def export_csv():
+    account_id = request.args.get("account_id", type=int)
+    record_type = request.args.get("record_type")
+    category_id = request.args.get("category_id", type=int)
+    tag_id = request.args.get("tag_id", type=int)
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+
     try:
         records = RecordService.query_records(
-            account_id=request.args.get("account_id", type=int),
-            record_type=request.args.get("record_type"),
-            category_id=request.args.get("category_id", type=int),
-            start_date=date.fromisoformat(request.args["start_date"]) if "start_date" in request.args else None,
-            end_date=date.fromisoformat(request.args["end_date"]) if "end_date" in request.args else None,
-            tag_id=request.args.get("tag_id", type=int),
+            account_id=account_id,
+            record_type=record_type,
+            category_id=category_id,
+            start_date=date.fromisoformat(start_date) if start_date else None,
+            end_date=date.fromisoformat(end_date) if end_date else None,
+            tag_id=tag_id,
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+    total_in = sum(r.amount for r in records if r.direction == "in")
+    total_out = sum(r.amount for r in records if r.direction == "out")
+
     output = StringIO()
     writer = csv.writer(output)
+
+    writer.writerow(["# Records Export"])
+    writer.writerow([
+        f"# Filters: account_id={account_id or 'ALL'}, record_type={record_type or 'ALL'}, "
+        f"category_id={category_id or 'ALL'}, tag_id={tag_id or 'ALL'}, "
+        f"start_date={start_date or 'ALL'}, end_date={end_date or 'ALL'}"
+    ])
+    writer.writerow([
+        f"# Summary: total_records={len(records)}, total_in={total_in}, "
+        f"total_out={total_out}, net={total_in - total_out}"
+    ])
+    writer.writerow([])
+
     writer.writerow([
         "id", "date", "direction", "type", "amount",
         "account_id", "target_account_id", "category_id",

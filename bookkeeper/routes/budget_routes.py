@@ -96,3 +96,12 @@ def copy_budget():
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+
+@budget_bp.route("/execution-overview", methods=["GET"])
+def execution_overview():
+    year = request.args.get("year", type=int)
+    if not year:
+        return jsonify({"error": "year is required"}), 400
+    result = BudgetService.execution_overview(year)
+    return jsonify(result)

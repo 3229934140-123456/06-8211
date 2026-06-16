@@ -187,3 +187,100 @@ class BudgetService:
             })
 
         return warnings
+
+    @staticmethod
+    def execution_overview(year):
+        budgets = Budget.query.filter_by(year=year).order_by(Budget.month, Budget.category_id).all()
+
+        monthly_status = {}
+        overspent_freq = {}
+
+        for budget in budgets:
+            cat_id = budget.category_id
+            cat_name = budget.category.name if budget.category else None
+
+            summary = MonthlySummary.query.filter_by(
+                year=year, month=budget.month, category_id=cat_id
+            ).first()
+            spent = summary.total_expense if summary else Decimal("0")
+            remaining = budget.amount - spent
+            overspent = spent > budget.amount
+            usage_percent = float(spent / budget.amount * 100) if budget.amount > 0 else 0
+
+            m = budget.month
+            if m not in monthly_status:
+                monthly_status[m] = {
+                    "month": m,
+                    "budgets": [],
+                    "total_budget": Decimal("0"),
+                    "total_spent": Decimal("0"),
+                }
+
+            monthly_status[m]["budgets"].append({
+                "budget_id": budget.id,
+                "category_id": cat_id,
+                "category_name": cat_name,
+                "budget_amount": str(budget.amount),
+                "spent": str(spent),
+                "remaining": str(remaining),
+                "overspent": overspent,
+                "usage_percent": usage_percent,
+            })
+            monthly_status[m]["total_budget"] += budget.amount
+            monthly_status[m]["total_spent"] += spent
+
+            if overspent:
+                if cat_id not in overspent_freq:
+                    overspent_freq[cat_id] = {
+                        "category_id": cat_id,
+                        "category_name": cat_name,
+                        "overspent_months": 0,
+                        "total_over_amount": Decimal("0"),
+                        "months": [],
+                    }
+                overspent_freq[cat_id]["overspent_months"] += 1
+                over_amount = spent - budget.amount
+                overspent_freq[cat_id]["total_over_amount"] += over_amount
+                overspent_freq[cat_id]["months"].append({
+                    "month": m,
+                    "spent": str(spent),
+                    "budget_amount": str(budget.amount),
+                    "over_amount": str(over_amount),
+                })
+
+        months_list = []
+        for m in range(1, 13):
+            if m in monthly_status:
+                ms = monthly_status[m]
+                ms["total_budget"] = str(ms["total_budget"])
+                ms["total_spent"] = str(ms["total_spent"])
+                ms["total_remaining"] = str(
+                    Decimal(ms["total_budget"]) - Decimal(ms["total_spent"])
+                )
+                ms["all_overspent"] = any(b["overspent"] for b in ms["budgets"])
+                ms["overspent_count"] = sum(1 for b in ms["budgets"] if b["overspent"])
+                months_list.append(ms)
+            else:
+                months_list.append({
+                    "month": m,
+                    "budgets": [],
+                    "total_budget": "0",
+                    "total_spent": "0",
+                    "total_remaining": "0",
+                    "all_overspent": False,
+                    "overspent_count": 0,
+                })
+
+        overspent_ranking = sorted(
+            overspent_freq.values(),
+            key=lambda x: x["overspent_months"],
+            reverse=True,
+        )
+        for item in overspent_ranking:
+            item["total_over_amount"] = str(item["total_over_amount"])
+
+        return {
+            "year": year,
+            "months": months_list,
+            "overspent_ranking": overspent_ranking,
+        }
